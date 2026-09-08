@@ -16,7 +16,7 @@ import { translate } from '@hcengineering/platform'
 import { getMediaDevices, getSelectedSpeakerId, type MediaSession } from '@hcengineering/media'
 import { LoveEvents } from '@hcengineering/love'
 import { useMedia } from '@hcengineering/media-resources'
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import { Analytics } from '@hcengineering/analytics'
 import { addNotification, NotificationSeverity } from '@hcengineering/ui'
 import { getCurrentLanguage } from '@hcengineering/theme'
@@ -31,7 +31,16 @@ export enum ScreenSharingState {
   Remote
 }
 
+export interface ScreenShareTrackInfo {
+  id: string
+  track: Track
+  publication?: TrackPublication
+  participant: Participant
+  isLocal: boolean
+}
+
 export const screenSharingState = writable<ScreenSharingState>(ScreenSharingState.Inactive)
+export const activeScreenShares = writable<Map<string, ScreenShareTrackInfo>>(new Map())
 export const lkSessionConnected = writable<boolean>(false)
 
 const LAST_PARTICIPANT_NOTIFICATION_DELAY_MS = 2 * 60 * 1000
@@ -44,8 +53,8 @@ export function getLiveKitClient (): LiveKitClient {
 const defaultCaptureOptions: VideoCaptureOptions = {
   facingMode: 'user',
   resolution: {
-    width: 1280,
-    height: 720,
+    width: 1920,
+    height: 1080,
     frameRate: 30
   }
 }
@@ -65,9 +74,13 @@ export class LiveKitClient {
       dynacast: true,
       publishDefaults: {
         videoCodec: 'vp9',
+        videoEncoding: {
+          maxBitrate: 3_200_000,
+          maxFramerate: 30
+        },
         screenShareEncoding: {
-          maxBitrate: 7_000_000,
-          maxFramerate: 15,
+          maxBitrate: 8_500_000,
+          maxFramerate: 30,
           priority: 'high'
         }
       },
@@ -168,6 +181,7 @@ export class LiveKitClient {
   onConnected = (): void => {
     this.isConnecting = false
     lkSessionConnected.set(true)
+    activeScreenShares.set(new Map())
     this.liveKitRoom.on(RoomEvent.ParticipantConnected, this.onParticipantConnected)
     this.liveKitRoom.on(RoomEvent.ParticipantDisconnected, this.onParticipantDisconnected)
     this.liveKitRoom.on(RoomEvent.TrackSubscribed, this.onTrackSubscribed)
@@ -180,6 +194,7 @@ export class LiveKitClient {
 
   onDisconnected = (): void => {
     lkSessionConnected.set(false)
+    activeScreenShares.set(new Map())
     this.liveKitRoom.off(RoomEvent.ParticipantConnected, this.onParticipantConnected)
     this.liveKitRoom.off(RoomEvent.ParticipantDisconnected, this.onParticipantDisconnected)
     this.liveKitRoom.off(RoomEvent.TrackSubscribed, this.onTrackSubscribed)
@@ -208,30 +223,55 @@ export class LiveKitClient {
 
   onTrackSubscribed = (
     track: RemoteTrack,
-    _publication: RemoteTrackPublication,
-    _participant: RemoteParticipant
+    publication: RemoteTrackPublication,
+    participant: RemoteParticipant
   ): void => {
     if (track.kind === Track.Kind.Video && track.source === Track.Source.ScreenShare) {
-      screenSharingState.set(ScreenSharingState.Remote)
+      const id = publication?.trackSid || track.sid || `${participant.identity}-${Date.now()}`
+      activeScreenShares.update((m) => {
+        m.set(id, { id, track, publication, participant, isLocal: false })
+        return new Map(m)
+      })
+      const hasLocal = Array.from(get(activeScreenShares).values()).some((s) => s.isLocal)
+      screenSharingState.set(hasLocal ? ScreenSharingState.Local : ScreenSharingState.Remote)
     }
   }
 
   onTrackUnsubscribed = (
     track: RemoteTrack,
-    _publication: RemoteTrackPublication,
+    publication: RemoteTrackPublication,
     _participant: RemoteParticipant
   ): void => {
     if (track.kind === Track.Kind.Video && track.source === Track.Source.ScreenShare) {
-      screenSharingState.set(ScreenSharingState.Inactive)
+      const id = publication?.trackSid || track.sid
+      activeScreenShares.update((m) => {
+        if (id) m.delete(id)
+        return new Map(m)
+      })
+      const shares = Array.from(get(activeScreenShares).values())
+      const hasLocal = shares.some((s) => s.isLocal)
+      const hasRemote = shares.some((s) => !s.isLocal)
+      if (hasLocal) {
+        screenSharingState.set(ScreenSharingState.Local)
+      } else if (hasRemote) {
+        screenSharingState.set(ScreenSharingState.Remote)
+      } else {
+        screenSharingState.set(ScreenSharingState.Inactive)
+      }
     }
   }
 
-  onLocalTrackPublished = (publication: LocalTrackPublication, _participant: LocalParticipant): void => {
+  onLocalTrackPublished = (publication: LocalTrackPublication, participant: LocalParticipant): void => {
     const session = this.currentMediaSession
     const track = publication.track?.mediaStreamTrack
     const deviceId = track?.getSettings().deviceId
     if (publication.track?.kind === Track.Kind.Video) {
       if (publication.track.source === Track.Source.ScreenShare) {
+        const id = publication.trackSid || publication.track.sid || `${participant.identity}-local`
+        activeScreenShares.update((m) => {
+          m.set(id, { id, track: publication.track!, publication, participant, isLocal: true })
+          return new Map(m)
+        })
         session?.setFeature('sharing', { enabled: true, track, deviceId })
         screenSharingState.set(ScreenSharingState.Local)
       } else {
@@ -246,8 +286,15 @@ export class LiveKitClient {
     const session = this.currentMediaSession
     if (publication.track?.kind === Track.Kind.Video) {
       if (publication.track.source === Track.Source.ScreenShare) {
+        const id = publication.trackSid || publication.track.sid
+        activeScreenShares.update((m) => {
+          if (id) m.delete(id)
+          return new Map(m)
+        })
+        const shares = Array.from(get(activeScreenShares).values())
+        const hasRemote = shares.some((s) => !s.isLocal)
+        screenSharingState.set(hasRemote ? ScreenSharingState.Remote : ScreenSharingState.Inactive)
         session?.setFeature('sharing', { enabled: false })
-        screenSharingState.set(ScreenSharingState.Inactive)
       } else {
         session?.setCamera({ enabled: false })
       }
@@ -351,6 +398,29 @@ export class LiveKitClient {
   async setScreenShareEnabled (value: boolean, withAudio: boolean = false): Promise<void> {
     try {
       await this.liveKitRoom.localParticipant.setScreenShareEnabled(value, { audio: withAudio })
+    } catch (e) {
+      console.log(e)
+    }
+  }
+
+  async publishAdditionalScreenShare (withAudio: boolean = false): Promise<void> {
+    try {
+      await this.liveKitRoom.localParticipant.setScreenShareEnabled(true, { audio: withAudio })
+    } catch (e) {
+      console.log(e)
+    }
+  }
+
+  async stopScreenShare (trackSid?: string): Promise<void> {
+    try {
+      if (trackSid) {
+        const pub = this.liveKitRoom.localParticipant.getTrackPublication(trackSid)
+        if (pub?.track) {
+          await this.liveKitRoom.localParticipant.unpublishTrack(pub.track, true)
+          return
+        }
+      }
+      await this.liveKitRoom.localParticipant.setScreenShareEnabled(false)
     } catch (e) {
       console.log(e)
     }

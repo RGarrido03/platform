@@ -32,7 +32,7 @@
   }
 
   function handleShare (): void {
-    if ($screenSharingState !== ScreenSharingState.Inactive) return
+    if ($screenSharingState === ScreenSharingState.Local) return
     void liveKitClient.setScreenShareEnabled(true, $isShareWithSound)
   }
 </script>
@@ -49,7 +49,7 @@
     </button>
   {:else}
     <button
-      class="hulyStatusBarButton mini disabled"
+      class="hulyStatusBarButton mini"
       class:pressed
       use:tooltip={{ label: love.string.Share, direction: 'bottom' }}
       on:click={handleShare}

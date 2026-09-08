@@ -35,8 +35,25 @@ export const RecordingPreset1080p: RecordingPreset = {
   preset: EncodingOptionsPreset.H264_1080P_30
 }
 
+export const RecordingPreset4K: RecordingPreset = {
+  name: '4k',
+  width: 3840,
+  height: 2160,
+  preset: {
+    width: 3840,
+    height: 2160,
+    videoBitrate: 12000,
+    videoCodec: 'h264',
+    framerate: 30,
+    audioCodec: 'aac',
+    audioBitrate: 128
+  }
+}
+
 export function getRecordingPreset (name: string | undefined): RecordingPreset {
   switch (name) {
+    case RecordingPreset4K.name:
+      return RecordingPreset4K
     case RecordingPreset1080p.name:
       return RecordingPreset1080p
     case RecordingPreset720p.name:

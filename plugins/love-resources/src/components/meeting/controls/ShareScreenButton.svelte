@@ -11,7 +11,7 @@
   const dispatch = createEventDispatcher()
 
   async function changeShare (): Promise<void> {
-    const newValue = $screenSharingState !== ScreenSharingState.Local
+    const newValue = !localScreenShare
     const audio = newValue && $isShareWithSound
     await liveKitClient.setScreenShareEnabled(newValue, audio)
     dispatch('changeShare')
@@ -31,7 +31,7 @@
     fill: localScreenShare ? 'var(--bg-negative-default)' : 'var(--bg-positive-default)'
   }}
   showTooltip={{ label: localScreenShare ? love.string.StopShare : love.string.Share }}
-  disabled={$screenSharingState === ScreenSharingState.Remote || !$lkSessionConnected}
+  disabled={!$lkSessionConnected}
   action={changeShare}
   secondIcon={IconUpOutline}
   secondAction={shareSettings}
