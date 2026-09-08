@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytest-huly"
+version = "0.1.0"
+description = "Pytest plugin for automated Huly Test Management reporting"
+readme = "README.md"
+authors = [{ name = "Huly Platform", email = "info@huly.io" }]
+license = { text = "MIT" }
+classifiers = [
+    "Framework :: Pytest",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "pytest>=7.0.0",
+    "httpx>=0.24.0",
+]
+
+[project.entry-points.pytest11]
+huly = "pytest_huly.plugin"
