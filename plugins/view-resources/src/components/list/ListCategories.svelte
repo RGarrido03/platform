@@ -113,17 +113,15 @@
       viewOptionsModel: ViewOptionModel[] | undefined
     ): Promise<void> => {
       categories = await getCategories(client, _class, space, docs, groupByKey)
-      if (level === 0) {
-        for (const viewOption of viewOptionsModel ?? []) {
-          if (viewOption.actionTarget !== 'category') continue
-          const categoryFunc = viewOption as CategoryOption
-          if (viewOptions[viewOption.key] ?? viewOption.defaultValue) {
-            const f = await getResource(categoryFunc.action)
-            const res = hierarchy.clone(await f(_class, query, space, groupByKey, update, queryId))
-            if (res !== undefined) {
-              categories = concatCategories(res, categories)
-              return
-            }
+      for (const viewOption of viewOptionsModel ?? []) {
+        if (viewOption.actionTarget !== 'category') continue
+        const categoryFunc = viewOption as CategoryOption
+        if (viewOptions[viewOption.key] ?? viewOption.defaultValue) {
+          const f = await getResource(categoryFunc.action)
+          const res = hierarchy.clone(await f(_class, query, space, groupByKey, update, queryId))
+          if (res !== undefined) {
+            categories = concatCategories(res, categories)
+            return
           }
         }
       }
