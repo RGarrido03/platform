@@ -16,6 +16,8 @@
 import {
   generateId,
   getCurrentAccount,
+  makeDocCollabId,
+  type Blob,
   type Class,
   type Client,
   type DocumentQuery,
@@ -25,7 +27,9 @@ import {
 } from '@hcengineering/core'
 import { type Document, type Teamspace } from '@hcengineering/document'
 import { type Resources } from '@hcengineering/platform'
-import { getClient, type ObjectSearchResult } from '@hcengineering/presentation'
+import { getClient, getMarkup, type ObjectSearchResult } from '@hcengineering/presentation'
+import { markupToJSON } from '@hcengineering/text'
+import { markupToMarkdown } from '@hcengineering/text-markdown'
 import { showPopup } from '@hcengineering/ui'
 import { openDoc } from '@hcengineering/view-resources'
 
@@ -142,6 +146,30 @@ export async function canUnlockDocument (doc: Document | Document[]): Promise<bo
   return arr.some((p) => p.lockedBy != null)
 }
 
+export async function exportDocumentMarkdown (doc: Document | Document[]): Promise<void> {
+  const docs = Array.isArray(doc) ? doc : [doc]
+  for (const d of docs) {
+    if (!d) continue
+    const content = await getMarkup(
+      makeDocCollabId(d, 'content'),
+      d.content as Ref<Blob>
+    )
+    let markdownText = ''
+    if (content !== null) {
+      const jsonMarkup = markupToJSON(content)
+      markdownText = markupToMarkdown(jsonMarkup)
+    }
+    const title = d.title || 'Untitled'
+    const blob = new Blob([markdownText], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = window.document.createElement('a')
+    a.href = url
+    a.download = `${title}.md`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+}
+
 export default async (): Promise<Resources> => ({
   component: {
     CreateDocument,
@@ -171,7 +199,8 @@ export default async (): Promise<Resources> => ({
     CreateDocument: createDocument,
     EditTeamspace: editTeamspace,
     LockContent: lockContent,
-    UnlockContent: unlockContent
+    UnlockContent: unlockContent,
+    ExportDocumentMarkdown: exportDocumentMarkdown
   },
   function: {
     GetObjectLinkFragment: getDocumentLink,
@@ -179,7 +208,8 @@ export default async (): Promise<Resources> => ({
     CanLockDocument: canLockDocument,
     CanUnlockDocument: canUnlockDocument,
     GetDocumentLinkId: getDocumentLinkId,
-    ParseDocumentId: parseDocumentId
+    ParseDocumentId: parseDocumentId,
+    ExportDocumentMarkdown: exportDocumentMarkdown
   },
   resolver: {
     Location: resolveLocation

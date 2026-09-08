@@ -58,7 +58,7 @@
   } from '@hcengineering/view-resources'
   import { createEventDispatcher, onDestroy, onMount } from 'svelte'
 
-  import { unlockContent } from '..'
+  import { unlockContent, exportDocumentMarkdown } from '..'
   import document from '../plugin'
   import { getDocumentUrl } from '../utils'
   import DocumentEditor from './DocumentEditor.svelte'
@@ -230,6 +230,15 @@
           copyTimeout = setTimeout(() => {
             isCopied = false
           }, 2000)
+        }
+      }
+    },
+    {
+      icon: document.icon.Document,
+      label: document.string.Document,
+      action: () => {
+        if (doc !== undefined) {
+          void exportDocumentMarkdown(doc)
         }
       }
     }
