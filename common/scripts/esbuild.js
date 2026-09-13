@@ -36,6 +36,13 @@ function getVersionFromScript(scriptPath) {
   }
 }
 
+// The release of the stack this image is deployed into (huly-selfhost's HULY_VERSION), without
+// the leading "v"; undefined when it is not set.
+function getReleaseVersion() {
+  const release = (process.env.HULY_VERSION ?? '').trim().replace(/^v/, '')
+  return release !== '' ? JSON.stringify(release) : undefined
+}
+
 async function bundle(config) {
   // Ensure output directory exists
   fs.mkdirSync(config.outdir, { recursive: true })
@@ -93,10 +100,21 @@ async function main() {
     }
   })
 
+  // Upstream builds every image from one release tag, so all of them advertise the same app
+  // and model version. This fork ships custom images next to released hardcoreeng/* images, so
+  // its bundles have no release tag on their lineage and would advertise a stale version, which
+  // the front/server and front/workspace-model version guards reject. --define=RELEASE_VERSION
+  // makes a bundle advertise the release it is deployed into (HULY_VERSION) instead of its own
+  // checkout. Only bundles the browser talks to (the front) should use it: for server-side
+  // bundles MODEL_VERSION gates workspace model upgrades and must stay this checkout's own.
+  const releaseVersion = define.RELEASE_VERSION ? getReleaseVersion() : undefined
+
   const env = {
-    MODEL_VERSION: define['MODEL_VERSION'] ? getVersionFromScript('./show_version.js') : undefined,
-    VERSION: getVersionFromScript('./show_tag.js'),
-    GIT_REVISION: define['GIT_REVISION'] ? getGitRevision() : undefined
+    MODEL_VERSION: define.MODEL_VERSION
+      ? releaseVersion ?? getVersionFromScript('./show_version.js')
+      : undefined,
+    VERSION: releaseVersion ?? getVersionFromScript('./show_tag.js'),
+    GIT_REVISION: define.GIT_REVISION ? getGitRevision() : undefined
   }
 
   Object.entries(env).forEach(([key, value]) => {
