@@ -132,8 +132,11 @@ build_inside_container() {
   fi
   # shellcheck disable=SC2086 # word splitting is what turns the list into docker args
   docker save -o /out/huly-x86-images.tar $saved
-  # shellcheck disable=SC2086
-  docker image inspect --format '{{index .RepoTags 0}} -> {{.Architecture}}/{{.Os}}' $saved
+  # Print the refs that were actually exported. (Not {{index .RepoTags 0}}: an image carries
+  # every tag ever applied to it, so that prints an arbitrary one -- e.g. a previous revision's.)
+  echo "$saved" | while read -r ref; do
+    printf '%s -> %s\n' "$ref" "$(docker image inspect --format '{{.Architecture}}/{{.Os}}' "$ref")"
+  done
 
   if [ "${LOAD:-1}" = 1 ] && [ -S /host-docker.sock ]; then
     echo "==> loading into the host Docker daemon"

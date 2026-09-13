@@ -70,7 +70,7 @@ const config: Config = (() => {
     S3StorageConfig: process.env[envMap.S3StorageConfig],
     Secret: process.env[envMap.Secret],
     ServiceID: process.env[envMap.ServiceID] ?? 'love-service',
-    RecordingPreset: process.env[envMap.RecordingPreset] ?? '720p',
+    RecordingPreset: process.env[envMap.RecordingPreset] ?? '1080p60',
     BillingUrl: process.env[envMap.BillingUrl] ?? '',
     BillingPollInterval: parseNumber(process.env[envMap.BillingPollInterval]) ?? 15
   }
