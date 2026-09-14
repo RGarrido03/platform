@@ -42,6 +42,39 @@ export interface ScreenShareTrackInfo {
 
 export const screenSharingState = writable<ScreenSharingState>(ScreenSharingState.Inactive)
 export const activeScreenShares = writable<Map<string, ScreenShareTrackInfo>>(new Map())
+// Screen shares the local user pinned to the main area. Pinning is per viewer and never sent
+// to the other participants, like Google Meet.
+export const pinnedScreenShares = writable<Set<string>>(new Set())
+
+export function toggleScreenSharePin (id: string): void {
+  pinnedScreenShares.update((pinned) => {
+    const next = new Set(pinned)
+    if (next.has(id)) {
+      next.delete(id)
+    } else {
+      next.add(id)
+    }
+    return next
+  })
+}
+
+// A share that went away can no longer be pinned: drop it so the store does not keep stale ids.
+function forgetScreenShare (id: string | undefined): void {
+  if (id === undefined || id === '') return
+  activeScreenShares.update((shares) => {
+    if (!shares.has(id)) return shares
+    const next = new Map(shares)
+    next.delete(id)
+    return next
+  })
+  pinnedScreenShares.update((pinned) => {
+    if (!pinned.has(id)) return pinned
+    const next = new Set(pinned)
+    next.delete(id)
+    return next
+  })
+}
+
 export const lkSessionConnected = writable<boolean>(false)
 
 const LAST_PARTICIPANT_NOTIFICATION_DELAY_MS = 2 * 60 * 1000
@@ -196,6 +229,7 @@ export class LiveKitClient {
     this.isConnecting = false
     lkSessionConnected.set(true)
     activeScreenShares.set(new Map())
+    pinnedScreenShares.set(new Set())
     this.liveKitRoom.on(RoomEvent.ParticipantConnected, this.onParticipantConnected)
     this.liveKitRoom.on(RoomEvent.ParticipantDisconnected, this.onParticipantDisconnected)
     this.liveKitRoom.on(RoomEvent.TrackSubscribed, this.onTrackSubscribed)
@@ -209,6 +243,7 @@ export class LiveKitClient {
   onDisconnected = (): void => {
     lkSessionConnected.set(false)
     activeScreenShares.set(new Map())
+    pinnedScreenShares.set(new Set())
     this.liveKitRoom.off(RoomEvent.ParticipantConnected, this.onParticipantConnected)
     this.liveKitRoom.off(RoomEvent.ParticipantDisconnected, this.onParticipantDisconnected)
     this.liveKitRoom.off(RoomEvent.TrackSubscribed, this.onTrackSubscribed)
@@ -257,11 +292,7 @@ export class LiveKitClient {
     _participant: RemoteParticipant
   ): void => {
     if (track.kind === Track.Kind.Video && track.source === Track.Source.ScreenShare) {
-      const id = publication?.trackSid || track.sid
-      activeScreenShares.update((m) => {
-        if (id) m.delete(id)
-        return new Map(m)
-      })
+      forgetScreenShare(publication?.trackSid || track.sid)
       const shares = Array.from(get(activeScreenShares).values())
       const hasLocal = shares.some((s) => s.isLocal)
       const hasRemote = shares.some((s) => !s.isLocal)
@@ -306,11 +337,7 @@ export class LiveKitClient {
     const session = this.currentMediaSession
     if (publication.track?.kind === Track.Kind.Video) {
       if (publication.track.source === Track.Source.ScreenShare) {
-        const id = publication.trackSid || publication.track.sid
-        activeScreenShares.update((m) => {
-          if (id) m.delete(id)
-          return new Map(m)
-        })
+        forgetScreenShare(publication.trackSid || publication.track.sid)
         const shares = Array.from(get(activeScreenShares).values())
         const hasRemote = shares.some((s) => !s.isLocal)
         screenSharingState.set(hasRemote ? ScreenSharingState.Remote : ScreenSharingState.Inactive)

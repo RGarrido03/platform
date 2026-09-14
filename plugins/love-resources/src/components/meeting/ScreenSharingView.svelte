@@ -1,8 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { liveKitClient, lk } from '../../utils'
-  import { activeScreenShares, type ScreenShareTrackInfo } from '../../liveKitClient'
+  import { translate } from '@hcengineering/platform'
+  import { tooltip } from '@hcengineering/ui'
   import { Track } from 'livekit-client'
+
+  import { liveKitClient, lk } from '../../utils'
+  import { activeScreenShares, pinnedScreenShares } from '../../liveKitClient'
+  import { layoutScreenShares } from '../../shareLayout'
+  import { isScreenSharePipOpen, pipSupported, toggleScreenSharePip } from '../../pip'
+  import love from '../../plugin'
+  import IconPictureInPicture from '../icons/PictureInPicture.svelte'
+  import ScreenShareTile from './ScreenShareTile.svelte'
 
   export let hasActiveTrack: boolean = false
   export let showLocalTrack: boolean = true
@@ -10,21 +18,14 @@
   $: allShares = Array.from($activeScreenShares.values())
   $: visibleShares = allShares.filter((s) => showLocalTrack || !s.isLocal)
   $: hasActiveTrack = visibleShares.length > 0
+  $: ({ main, thumbs } = layoutScreenShares(visibleShares, $pinnedScreenShares))
 
-  function attachTrack (node: HTMLVideoElement, track: Track) {
-    track.attach(node)
-    return {
-      update (newTrack: Track) {
-        if (newTrack !== track) {
-          track.detach(node)
-          track = newTrack
-          track.attach(node)
-        }
-      },
-      destroy () {
-        track.detach(node)
-      }
-    }
+  let pipLabel: string = ''
+
+  $: void updatePipLabel()
+
+  async function updatePipLabel (): Promise<void> {
+    pipLabel = await translate(love.string.PictureInPicture)
   }
 
   onMount(async () => {
@@ -57,37 +58,89 @@
 </script>
 
 {#if visibleShares.length > 0}
-  <div
-    class="screens-container"
-    class:single={visibleShares.length === 1}
-    class:dual={visibleShares.length === 2}
-    class:multi={visibleShares.length > 2}
-  >
-    {#each visibleShares as share (share.id)}
-      <div class="screen-tile">
-        <video
-          class="screen"
-          use:attachTrack={share.track}
-          autoplay
-          playsinline
-          muted={share.isLocal}
-        ></video>
-        <div class="screen-badge">
-          <span class="presenter-name">{share.participant?.name || 'Screen'}</span>
-          {#if share.isLocal}
-            <span class="local-tag">You</span>
-          {/if}
-        </div>
+  <div class="screens-wrapper">
+    {#if pipSupported}
+      <div class="screen-actions">
+        <button
+          class="screen-action"
+          class:pressed={$isScreenSharePipOpen}
+          aria-label={pipLabel}
+          aria-pressed={$isScreenSharePipOpen}
+          use:tooltip={{ label: love.string.PictureInPicture, direction: 'bottom' }}
+          on:click={toggleScreenSharePip}
+        >
+          <IconPictureInPicture size={'small'} />
+        </button>
       </div>
-    {/each}
+    {/if}
+
+    <div
+      class="screens-container"
+      class:single={main.length === 1}
+      class:dual={main.length === 2}
+      class:multi={main.length > 2}
+    >
+      {#each main as share (share.id)}
+        <ScreenShareTile {share} pinned={$pinnedScreenShares.has(share.id)} />
+      {/each}
+    </div>
+
+    {#if thumbs.length > 0}
+      <div class="screen-thumbs">
+        {#each thumbs as share (share.id)}
+          <ScreenShareTile {share} compact />
+        {/each}
+      </div>
+    {/if}
   </div>
 {/if}
 
 <style lang="scss">
-  .screens-container {
-    display: grid;
+  .screens-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
     width: 100%;
     height: 100%;
+    min-height: 0;
+  }
+
+  .screen-actions {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 2;
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .screen-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.35rem;
+    border: none;
+    border-radius: 0.375rem;
+    background: rgba(0, 0, 0, 0.65);
+    color: #f3f4f6;
+    cursor: pointer;
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.85);
+    }
+
+    &.pressed {
+      background: #3b82f6;
+      color: #ffffff;
+    }
+  }
+
+  .screens-container {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    width: 100%;
     gap: 0.75rem;
     align-items: center;
     justify-content: center;
@@ -108,55 +161,13 @@
     }
   }
 
-  .screen-tile {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    min-width: 0;
-    min-height: 0;
+  .screen-thumbs {
+    flex: 0 0 auto;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #0b0d11;
-    border-radius: 0.75rem;
-    overflow: hidden;
-
-    .screen {
-      object-fit: contain;
-      max-width: 100%;
-      max-height: 100%;
-      height: 100%;
-      width: 100%;
-      border-radius: 0.75rem;
-    }
-
-    .screen-badge {
-      position: absolute;
-      bottom: 0.75rem;
-      left: 0.75rem;
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      padding: 0.25rem 0.6rem;
-      background: rgba(0, 0, 0, 0.65);
-      border-radius: 0.375rem;
-      backdrop-filter: blur(8px);
-      pointer-events: none;
-
-      .presenter-name {
-        color: #f3f4f6;
-        font-size: 0.8rem;
-        font-weight: 500;
-      }
-
-      .local-tag {
-        background: #3b82f6;
-        color: #ffffff;
-        font-size: 0.7rem;
-        font-weight: 600;
-        padding: 0.05rem 0.35rem;
-        border-radius: 0.25rem;
-      }
-    }
+    gap: 0.5rem;
+    height: 5.5rem;
+    padding-bottom: 0.25rem;
+    overflow-x: auto;
+    overflow-y: hidden;
   }
 </style>

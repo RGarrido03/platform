@@ -105,6 +105,9 @@ export default mergeIds(loveId, love, {
     Browser: '' as IntlString,
     Monitor: '' as IntlString,
     Window: '' as IntlString,
+    Pin: '' as IntlString,
+    Unpin: '' as IntlString,
+    PictureInPicture: '' as IntlString,
     MeetingEmptyTitle: '' as IntlString,
     MeetingEmptyMessage: '' as IntlString,
     StayInRoom: '' as IntlString
