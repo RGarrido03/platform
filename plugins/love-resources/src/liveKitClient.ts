@@ -3,6 +3,7 @@ import {
   type RemoteParticipant,
   Room as LKRoom,
   RoomEvent,
+  type ScreenShareCaptureOptions,
   type VideoCaptureOptions,
   type RemoteTrack,
   type RemoteTrackPublication,
@@ -59,6 +60,16 @@ const defaultCaptureOptions: VideoCaptureOptions = {
   }
 }
 
+// LiveKit defaults a screen share capture to ScreenSharePresets.h1080fps30, so a frame rate
+// has to be requested explicitly for anything faster than 30.
+const defaultScreenShareCaptureOptions: ScreenShareCaptureOptions = {
+  resolution: {
+    width: 1920,
+    height: 1080,
+    frameRate: 60
+  }
+}
+
 export class LiveKitClient {
   public readonly liveKitRoom: LKRoom
 
@@ -79,8 +90,11 @@ export class LiveKitClient {
           maxFramerate: 30
         },
         screenShareEncoding: {
-          maxBitrate: 8_500_000,
-          maxFramerate: 30,
+          // Screen share is published as a single layer, so this is the only place its frame
+          // rate is capped. 60 here is not enough on its own: the capture has to request it
+          // too (defaultScreenShareCaptureOptions), otherwise LiveKit captures at 30.
+          maxBitrate: 12_000_000,
+          maxFramerate: 60,
           priority: 'high'
         }
       },
@@ -267,6 +281,12 @@ export class LiveKitClient {
     const deviceId = track?.getSettings().deviceId
     if (publication.track?.kind === Track.Kind.Video) {
       if (publication.track.source === Track.Source.ScreenShare) {
+        // LiveKit's browser screen capturer does not forward contentHint from its capture
+        // options to getDisplayMedia, so set it on the captured track: without a hint the
+        // browser treats a share as 'detail' and drops frame rate before resolution.
+        if (track !== undefined) {
+          track.contentHint = 'motion'
+        }
         const id = publication.trackSid || publication.track.sid || `${participant.identity}-local`
         activeScreenShares.update((m) => {
           m.set(id, { id, track: publication.track!, publication, participant, isLocal: true })
@@ -397,7 +417,10 @@ export class LiveKitClient {
 
   async setScreenShareEnabled (value: boolean, withAudio: boolean = false): Promise<void> {
     try {
-      await this.liveKitRoom.localParticipant.setScreenShareEnabled(value, { audio: withAudio })
+      await this.liveKitRoom.localParticipant.setScreenShareEnabled(value, {
+        audio: withAudio,
+        ...defaultScreenShareCaptureOptions
+      })
     } catch (e) {
       console.log(e)
     }
@@ -405,7 +428,10 @@ export class LiveKitClient {
 
   async publishAdditionalScreenShare (withAudio: boolean = false): Promise<void> {
     try {
-      await this.liveKitRoom.localParticipant.setScreenShareEnabled(true, { audio: withAudio })
+      await this.liveKitRoom.localParticipant.setScreenShareEnabled(true, {
+        audio: withAudio,
+        ...defaultScreenShareCaptureOptions
+      })
     } catch (e) {
       console.log(e)
     }
